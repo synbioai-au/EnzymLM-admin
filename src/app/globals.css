@@ -1,0 +1,49 @@
+@import "tailwindcss";
+
+/* Class-based dark mode (Tailwind v4). */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* Atria University brand tones (shared with the main client). */
+@theme {
+  --color-atria-navy-50: #eef4f9;
+  --color-atria-navy-100: #dce8f2;
+  --color-atria-navy-200: #b3c9dc;
+  --color-atria-navy-300: #7a9fc4;
+  --color-atria-navy-400: #4a7bab;
+  --color-atria-navy-500: #2a5f8f;
+  --color-atria-navy-600: #1e4a78;
+  --color-atria-navy-700: #18395c;
+  --color-atria-navy-800: #153c63;
+  --color-atria-navy-900: #102c44;
+  --color-atria-navy-950: #0c2438;
+
+  --color-atria-green-50: #f0faf0;
+  --color-atria-green-100: #dcf2dc;
+  --color-atria-green-200: #bae5b5;
+  --color-atria-green-300: #8fd487;
+  --color-atria-green-400: #6bc462;
+  --color-atria-green-500: #51b848;
+  --color-atria-green-600: #449945;
+  --color-atria-green-700: #3a8f34;
+  --color-atria-green-800: #2d862d;
+  --color-atria-green-900: #226922;
+  --color-atria-green-950: #145214;
+
+  --color-atria-mint: #e5f6f0;
+}
+
+:root {
+  --background: #f4f8fb;
+  --foreground: #1b3554;
+}
+
+.dark {
+  --background: #0c1218;
+  --foreground: #e9eef5;
+}
+
+body {
+  color: var(--foreground);
+  background: var(--background);
+  font-family: Arial, Helvetica, sans-serif;
+}
