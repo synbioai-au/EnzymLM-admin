@@ -45,7 +45,7 @@ export default function DashboardPage() {
 
   return (
     <div className="min-h-screen">
-      <header className="border-b border-gray-200 bg-white/80 backdrop-blur dark:border-gray-700 dark:bg-gray-900/70">
+      <header className="border-b border-slate-200 bg-white/80 backdrop-blur dark:border-slate-800 dark:bg-slate-900/70">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
           <div className="flex items-center gap-2.5">
             <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-atria-navy-800 to-atria-green-600 text-white">
@@ -67,8 +67,15 @@ export default function DashboardPage() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-6xl px-6 py-6">
-        <nav className="mb-6 flex gap-1 border-b border-gray-200 dark:border-gray-700">
+      <main className="mx-auto max-w-6xl px-6 py-8">
+        <div className="mb-6 max-w-2xl">
+          <h1 className="text-2xl font-semibold text-slate-900 dark:text-white">Usage limits</h1>
+          <p className="mt-2 text-pretty text-sm text-slate-600 dark:text-slate-400">
+            Per-user monthly caps on how many times each task — and each model within it — can run. Set defaults for
+            everyone, override per user, and watch usage. Nothing runs uncapped.
+          </p>
+        </div>
+        <nav className="mb-8 flex gap-1 border-b border-slate-200 dark:border-slate-800">
           {TABS.map((t) => {
             const Icon = t.icon;
             const active = tab === t.id;
@@ -79,8 +86,8 @@ export default function DashboardPage() {
                 className={cn(
                   "flex items-center gap-2 border-b-2 px-4 py-2.5 text-sm font-medium transition-colors",
                   active
-                    ? "border-atria-green-600 text-atria-navy-800 dark:text-gray-100"
-                    : "border-transparent text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200",
+                    ? "border-atria-green-600 text-slate-900 dark:text-white"
+                    : "border-transparent text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200",
                 )}
               >
                 <Icon className="h-4 w-4" /> {t.label}

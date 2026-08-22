@@ -1,26 +1,45 @@
 "use client";
-import { useCallback, useEffect, useState } from "react";
-import { Globe, ChevronRight, ChevronDown, Layers } from "lucide-react";
-import { Card, Spinner, ErrorNote, Badge } from "@/components/ui";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { ChevronRight, Globe } from "lucide-react";
+import { Spinner, ErrorNote } from "@/components/ui";
 import { LimitEditor } from "@/components/LimitEditor";
 import { getModels, getLimits, setLimit, deleteLimit, type Model, type Limit } from "@/lib/api";
+import { PHASES, WORKFLOWS, TASKS_BY_WORKFLOW, type CatalogTask } from "@/lib/catalog";
 import { cn } from "@/lib/cn";
 
 const GLOBAL_MODEL = "*";
+const MUTED = "text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400";
 
+const wfKey = (id: string) => `wf:${id}`;
+const taskKey = (wf: string, t: string) => `task:${wf}:${t}`;
+
+function taskCountLabel(total: number, available: number, disabled: boolean): string {
+  if (total === 0) return "No tasks yet";
+  const p = total === 1 ? "" : "s";
+  if (disabled) return `${total} task${p} planned`;
+  if (available === total) return `${total} task${p}`;
+  return `${available} of ${total} tasks available`;
+}
+
+/**
+ * Model defaults arranged exactly like the app's /workflows page:
+ * Phase → Workflow → Task → Model, as one tree (indentation + hairline rails,
+ * chevron disclosure, no cards) — with a cap editor added on each cappable task
+ * and model.
+ */
 export function ModelsPanel() {
-  const [models, setModels] = useState<Model[]>([]);
+  const [backendModels, setBackendModels] = useState<Model[]>([]);
   const [limits, setLimits] = useState<Limit[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [busyKey, setBusyKey] = useState<string | null>(null);
-  const [open, setOpen] = useState<Record<string, boolean>>({});
+  const [open, setOpen] = useState<Record<string, boolean>>({ [wfKey(PHASES[0].workflowIds[0])]: true });
 
   const load = useCallback(async () => {
     try {
       setError("");
       const [m, l] = await Promise.all([getModels(), getLimits()]);
-      setModels(m);
+      setBackendModels(m);
       setLimits(l);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load");
@@ -33,12 +52,38 @@ export function ModelsPanel() {
     void load();
   }, [load]);
 
+  // Which tasks the backend can actually cap, and each task's models.
+  const modelsByTask = useMemo(() => {
+    const map: Record<string, { model: string; displayName: string }[]> = {};
+    for (const m of backendModels) map[m.modelId] = m.models;
+    return map;
+  }, [backendModels]);
+  const cappable = useMemo(() => new Set(backendModels.map((m) => m.modelId)), [backendModels]);
+
   const globalRow = limits.find((l) => l.scope === "global");
   const globalValue = globalRow?.maxReqs ?? 0;
-  const taskDefault = (task: string) =>
-    limits.find((l) => l.scope === "default" && l.modelId === task && l.model === null);
-  const modelDefault = (task: string, model: string) =>
-    limits.find((l) => l.scope === "default" && l.modelId === task && l.model === model);
+  const taskDefault = (task: string) => limits.find((l) => l.scope === "default" && l.modelId === task && l.model === null);
+  const modelDefault = (task: string, model: string) => limits.find((l) => l.scope === "default" && l.modelId === task && l.model === model);
+
+  const allKeys = useMemo(() => {
+    const keys: string[] = [];
+    for (const phase of PHASES) {
+      for (const wfId of phase.workflowIds) {
+        const wf = WORKFLOWS[wfId];
+        const tasks = TASKS_BY_WORKFLOW[wfId] ?? [];
+        if (!wf || wf.disabled || tasks.length === 0) continue;
+        keys.push(wfKey(wfId));
+        for (const t of tasks) {
+          if (!t.disabled && cappable.has(t.id) && (modelsByTask[t.id]?.length ?? 0) > 0) keys.push(taskKey(wfId, t.id));
+        }
+      }
+    }
+    return keys;
+  }, [cappable, modelsByTask]);
+
+  const expandAll = () => setOpen(Object.fromEntries(allKeys.map((k) => [k, true])));
+  const collapseAll = () => setOpen({});
+  const toggle = (k: string) => setOpen((o) => ({ ...o, [k]: !o[k] }));
 
   const run = async (key: string, fn: () => Promise<unknown>) => {
     setBusyKey(key);
@@ -52,123 +97,191 @@ export function ModelsPanel() {
     }
   };
 
-  if (loading) return <Spinner label="Loading models…" />;
+  if (loading) return <Spinner label="Loading catalog…" />;
 
   return (
-    <div className="space-y-5">
-      {error && <ErrorNote message={error} />}
+    <div className="mx-auto max-w-4xl">
+      {error && <div className="mb-4"><ErrorNote message={error} /></div>}
 
-      <Card className="p-5">
-        <div className="mb-3 flex items-center gap-2">
-          <Globe className="h-4 w-4 text-atria-navy-600 dark:text-atria-green-400" />
-          <h3 className="font-semibold">Global floor</h3>
-          <Badge tone="navy">applies to every task with no default</Badge>
+      {/* Global floor — a row, not a card. */}
+      <div className="flex items-start gap-3 border-b border-slate-200 py-5 dark:border-slate-800">
+        <Globe className="mt-0.5 h-5 w-5 shrink-0 text-atria-navy-600 dark:text-atria-green-400" aria-hidden />
+        <div className="min-w-0 flex-1">
+          <div className="font-semibold text-slate-900 dark:text-white">Global floor</div>
+          <div className="mt-0.5 text-sm text-slate-600 dark:text-slate-400">
+            The safety cap — any task without its own default falls back to this, so nothing runs uncapped.
+          </div>
         </div>
-        <p className="mb-3 text-sm text-gray-500 dark:text-gray-400">
-          The safety cap. Any task without its own default falls back to this — so nothing ever runs uncapped.
-        </p>
-        <div className="flex items-center gap-3">
-          <LimitEditor
-            value={globalValue}
-            onSave={(v) => run("global", () => setLimit({ scope: "global", modelId: GLOBAL_MODEL, maxReqs: v }))}
-            busy={busyKey === "global"}
-          />
-          <span className="text-sm text-gray-500 dark:text-gray-400">requests / user / month</span>
-          {globalRow?.prevMaxReqs != null && <span className="text-xs text-gray-400">was {globalRow.prevMaxReqs}</span>}
+        <div className="flex shrink-0 items-center gap-2">
+          {globalRow?.prevMaxReqs != null && <span className="text-xs text-slate-400">was {globalRow.prevMaxReqs}</span>}
+          <LimitEditor value={globalValue} onSave={(v) => run("global", () => setLimit({ scope: "global", modelId: GLOBAL_MODEL, maxReqs: v }))} busy={busyKey === "global"} />
         </div>
-      </Card>
+      </div>
 
-      <Card className="overflow-hidden">
-        <div className="border-b border-gray-200 p-5 dark:border-gray-700">
-          <h3 className="font-semibold">Per-task &amp; per-model defaults</h3>
-          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-            Set a default cap for a task (applies to all its models), then expand a task to cap individual models — e.g.
-            allow 100 VespaG but only 5 ESM-2. Per-user overrides (Users tab) beat these. A run must pass both its task
-            cap and its model cap.
-          </p>
-        </div>
-        <div className="divide-y divide-gray-100 dark:divide-gray-700/60">
-          {models.map((m) => {
-            const td = taskDefault(m.modelId);
-            const effTask = td?.maxReqs ?? globalValue;
-            const isOpen = !!open[m.modelId];
-            const hasModels = m.models.length > 0;
-            return (
-              <div key={m.modelId}>
-                <div className="flex items-center gap-3 px-5 py-3">
-                  <button
-                    onClick={() => hasModels && setOpen((o) => ({ ...o, [m.modelId]: !o[m.modelId] }))}
-                    className={cn("flex min-w-0 flex-1 items-center gap-2 text-left", hasModels ? "cursor-pointer" : "cursor-default")}
-                  >
-                    {hasModels ? (
-                      isOpen ? <ChevronDown className="h-4 w-4 shrink-0 text-gray-400" /> : <ChevronRight className="h-4 w-4 shrink-0 text-gray-400" />
-                    ) : (
-                      <span className="w-4 shrink-0" />
+      <div className="mt-6 flex items-center justify-end gap-2 text-sm font-semibold">
+        <button onClick={expandAll} className="text-atria-navy-700 underline-offset-4 hover:underline dark:text-atria-green-300">Expand all</button>
+        <span className="text-slate-300 dark:text-slate-700" aria-hidden>/</span>
+        <button onClick={collapseAll} className="text-slate-500 underline-offset-4 hover:underline dark:text-slate-400">Collapse all</button>
+      </div>
+
+      <div className="mt-4 space-y-12">
+        {PHASES.map((phase) => (
+          <section key={phase.title}>
+            <h2 className="text-xl font-semibold text-slate-900 dark:text-white">{phase.title}</h2>
+            <p className="mt-1 max-w-2xl text-sm text-slate-600 dark:text-slate-400">{phase.subtitle}</p>
+
+            <ul className="mt-4 border-t border-slate-200 dark:border-slate-800">
+              {phase.workflowIds.map((wfId) => {
+                const wf = WORKFLOWS[wfId];
+                if (!wf) return null;
+                const tasks = TASKS_BY_WORKFLOW[wfId] ?? [];
+                const available = tasks.filter((t) => !t.disabled).length;
+                const canOpen = !wf.disabled && tasks.length > 0;
+                const isOpen = !!open[wfKey(wfId)];
+                const WIcon = wf.Icon;
+                return (
+                  <li key={wfId} className="border-b border-slate-200 dark:border-slate-800">
+                    <div className="flex items-start gap-3 py-4">
+                      <button
+                        onClick={() => canOpen && toggle(wfKey(wfId))}
+                        className={cn("flex min-w-0 flex-1 items-start gap-3 text-left", canOpen ? "cursor-pointer" : "cursor-default")}
+                      >
+                        {canOpen ? (
+                          <ChevronRight className={cn("mt-1 h-4 w-4 shrink-0 text-slate-400 transition-transform duration-200", isOpen && "rotate-90")} aria-hidden />
+                        ) : (
+                          <span className="mt-1 h-4 w-4 shrink-0" aria-hidden />
+                        )}
+                        <WIcon className={cn("mt-0.5 h-5 w-5 shrink-0", wf.disabled ? "text-slate-400 dark:text-slate-500" : "text-atria-navy-600 dark:text-atria-green-400")} aria-hidden />
+                        <span className="min-w-0 flex-1">
+                          <span className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
+                            <span className="font-semibold text-slate-900 dark:text-white">{wf.title}</span>
+                            {wf.disabled && <span className={MUTED}>Coming soon</span>}
+                          </span>
+                          <span className="mt-0.5 block max-w-2xl text-sm text-slate-600 dark:text-slate-400">{wf.description}</span>
+                        </span>
+                      </button>
+                      <span className="ml-auto hidden shrink-0 pt-1 text-xs font-medium text-slate-500 dark:text-slate-400 sm:block">
+                        {taskCountLabel(tasks.length, available, !!wf.disabled)}
+                      </span>
+                    </div>
+
+                    {isOpen && canOpen && (
+                      <ul className="mb-2 ml-2 divide-y divide-slate-100 border-l border-slate-200 pl-4 dark:divide-slate-800/70 dark:border-slate-800 sm:pl-6">
+                        {tasks.map((task) => (
+                          <li key={task.id}>
+                            <TaskRow
+                              wfId={wfId}
+                              task={task}
+                              editable={!task.disabled && cappable.has(task.id)}
+                              models={modelsByTask[task.id] ?? []}
+                              effTask={taskDefault(task.id)?.maxReqs ?? globalValue}
+                              hasTaskDefault={!!taskDefault(task.id)}
+                              modelDefault={modelDefault}
+                              open={open}
+                              toggle={toggle}
+                              busyKey={busyKey}
+                              run={run}
+                            />
+                          </li>
+                        ))}
+                      </ul>
                     )}
-                    <span className="min-w-0">
-                      <span className="font-medium">{m.displayName}</span>
-                      <span className="ml-2 font-mono text-xs text-gray-400">{m.modelId}</span>
-                      {hasModels && (
-                        <Badge tone="gray">
-                          <Layers className="mr-1 h-3 w-3" />
-                          {m.models.length} models
-                        </Badge>
-                      )}
-                    </span>
-                  </button>
-                  <span className="shrink-0 text-sm">
-                    <span className="font-semibold">{effTask}</span>{" "}
-                    {td ? <Badge tone="green">default</Badge> : <span className="text-xs text-gray-400">(global)</span>}
-                  </span>
-                  <LimitEditor
-                    value={effTask}
-                    onSave={(v) => run(m.modelId, () => setLimit({ scope: "default", modelId: m.modelId, maxReqs: v }))}
-                    onReset={() => run(m.modelId, () => deleteLimit({ scope: "default", modelId: m.modelId }))}
-                    canReset={!!td}
-                    busy={busyKey === m.modelId}
-                  />
-                </div>
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+        ))}
+      </div>
+    </div>
+  );
+}
 
-                {isOpen && hasModels && (
-                  <div className="bg-gray-50/60 px-5 pb-3 dark:bg-gray-900/30">
-                    {m.models.map((mo) => {
-                      const mk = `${m.modelId}::${mo.model}`;
-                      const md = modelDefault(m.modelId, mo.model);
-                      const val = md?.maxReqs ?? effTask;
-                      return (
-                        <div key={mo.model} className="flex items-center gap-3 py-2 pl-6">
-                          <span className="min-w-0 flex-1">
-                            <span className="text-sm">{mo.displayName}</span>
-                            <span className="ml-2 font-mono text-xs text-gray-400">{mo.model}</span>
-                          </span>
-                          <span className="shrink-0 text-sm">
-                            {md ? (
-                              <>
-                                <span className="font-semibold">{md.maxReqs}</span> <Badge tone="amber">model cap</Badge>
-                              </>
-                            ) : (
-                              <span className="text-xs text-gray-400">no model cap (task cap applies)</span>
-                            )}
-                          </span>
-                          <LimitEditor
-                            value={val}
-                            onSave={(v) =>
-                              run(mk, () => setLimit({ scope: "default", modelId: m.modelId, model: mo.model, maxReqs: v }))
-                            }
-                            onReset={() => run(mk, () => deleteLimit({ scope: "default", modelId: m.modelId, model: mo.model }))}
-                            canReset={!!md}
-                            busy={busyKey === mk}
-                          />
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
+function TaskRow({
+  wfId, task, editable, models, effTask, hasTaskDefault, modelDefault, open, toggle, busyKey, run,
+}: {
+  wfId: string;
+  task: CatalogTask;
+  editable: boolean;
+  models: { model: string; displayName: string }[];
+  effTask: number;
+  hasTaskDefault: boolean;
+  modelDefault: (task: string, model: string) => Limit | undefined;
+  open: Record<string, boolean>;
+  toggle: (k: string) => void;
+  busyKey: string | null;
+  run: (key: string, fn: () => Promise<unknown>) => Promise<void>;
+}) {
+  const key = taskKey(wfId, task.id);
+  const isOpen = !!open[key];
+  const hasModels = editable && models.length > 0;
+  const TIcon = task.Icon;
+
+  return (
+    <>
+      <div className="flex items-start gap-2.5 py-3">
+        <button
+          onClick={() => hasModels && toggle(key)}
+          className={cn("flex min-w-0 flex-1 items-start gap-2.5 text-left", hasModels ? "cursor-pointer" : "cursor-default")}
+        >
+          {hasModels ? (
+            <ChevronRight className={cn("mt-0.5 h-4 w-4 shrink-0 text-slate-400 transition-transform duration-200", isOpen && "rotate-90")} aria-hidden />
+          ) : (
+            <span className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+          )}
+          <TIcon className="mt-0.5 h-4 w-4 shrink-0 text-slate-400 dark:text-slate-500" aria-hidden />
+          <span className="min-w-0 flex-1">
+            <span className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
+              <span className="text-sm font-semibold text-slate-900 dark:text-white">{task.title}</span>
+              {task.disabled && <span className={MUTED}>Coming soon</span>}
+            </span>
+            <span className="mt-0.5 block max-w-2xl text-sm text-slate-600 dark:text-slate-400">{task.desc}</span>
+          </span>
+        </button>
+        {editable ? (
+          <div className="flex shrink-0 items-center gap-2 pt-0.5">
+            {hasModels && <span className="hidden text-xs text-slate-500 dark:text-slate-400 sm:inline">{models.length} model{models.length === 1 ? "" : "s"}</span>}
+            <LimitEditor
+              value={effTask}
+              onSave={(v) => run(task.id, () => setLimit({ scope: "default", modelId: task.id, maxReqs: v }))}
+              onReset={() => run(task.id, () => deleteLimit({ scope: "default", modelId: task.id }))}
+              canReset={hasTaskDefault}
+              busy={busyKey === task.id}
+            />
+          </div>
+        ) : (
+          !task.disabled && <span className="shrink-0 pt-1 text-xs text-slate-400">not cappable</span>
+        )}
+      </div>
+
+      {isOpen && hasModels && (
+        <ul className="mb-2 ml-[26px] space-y-2 pb-1">
+          {models.map((mo) => {
+            const mk = `${task.id}::${mo.model}`;
+            const md = modelDefault(task.id, mo.model);
+            return (
+              <li key={mo.model} className="flex items-center gap-3">
+                <span className="min-w-0 flex-1">
+                  <span className="flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5">
+                    <span className="text-sm text-slate-900 dark:text-white">{mo.displayName}</span>
+                    <span className="font-mono text-xs text-slate-400">{mo.model}</span>
+                  </span>
+                  <span className="text-xs text-slate-500 dark:text-slate-400">
+                    {md ? `model cap ${md.maxReqs}` : "no model cap — task cap applies"}
+                  </span>
+                </span>
+                <LimitEditor
+                  value={md?.maxReqs ?? effTask}
+                  onSave={(v) => run(mk, () => setLimit({ scope: "default", modelId: task.id, model: mo.model, maxReqs: v }))}
+                  onReset={() => run(mk, () => deleteLimit({ scope: "default", modelId: task.id, model: mo.model }))}
+                  canReset={!!md}
+                  busy={busyKey === mk}
+                />
+              </li>
             );
           })}
-        </div>
-      </Card>
-    </div>
+        </ul>
+      )}
+    </>
   );
 }
