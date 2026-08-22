@@ -32,14 +32,16 @@
   --color-atria-mint: #e5f6f0;
 }
 
+/* Match the main SynBio app: white bg / near-black text in light,
+   gray-900 bg / gray-100 text in dark. */
 :root {
-  --background: #f4f8fb;
-  --foreground: #1b3554;
+  --background: #ffffff;
+  --foreground: #171717; /* neutral-900 */
 }
 
 .dark {
-  --background: #0c1218;
-  --foreground: #e9eef5;
+  --background: #111827; /* gray-900 */
+  --foreground: #f3f4f6; /* gray-100 */
 }
 
 body {
