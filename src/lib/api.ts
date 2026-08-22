@@ -78,10 +78,29 @@ export async function login(email: string, password: string): Promise<LoginResul
   return data;
 }
 
+/** Google SSO — exchanges the Google credential for our JWT (same backend
+ * endpoint the main app uses). The caller must still gate on role === "admin". */
+export async function googleLogin(credential: string): Promise<LoginResult> {
+  const res = await fetch(`${API_URL}/auth/google`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ credential }),
+  });
+  const data = (await res.json().catch(() => ({}))) as LoginResult & { detail?: string };
+  if (res.status === 503) throw new Error("Google sign-in is not enabled on the server.");
+  if (!res.ok) throw new Error(data.detail || data.message || "Google sign-in failed");
+  return data;
+}
+
 // ---- models ----
-export interface Model {
-  modelId: string;
+export interface ModelOption {
+  model: string;
   displayName: string;
+}
+export interface Model {
+  modelId: string; // task id
+  displayName: string;
+  models: ModelOption[]; // ML models offered by this task (may be empty)
 }
 export const getModels = () => req<Model[]>("/admin/models");
 
@@ -90,7 +109,8 @@ export interface Limit {
   _id: string;
   scope: "global" | "default" | "user";
   userId: string | null;
-  modelId: string;
+  modelId: string; // task id (or "*" for global)
+  model: string | null; // ML model, or null for a task-level cap
   maxReqs: number;
   prevMaxReqs: number | null;
   updatedBy: { id: string; email?: string } | null;
@@ -103,11 +123,13 @@ export const setLimit = (body: {
   modelId: string;
   maxReqs: number;
   userId?: string;
+  model?: string | null;
 }) => req<{ message: string; limit: Limit }>("/admin/limits", { method: "PUT", body: JSON.stringify(body) });
 
-export const deleteLimit = (q: { scope: "default" | "user"; modelId: string; userId?: string }) => {
+export const deleteLimit = (q: { scope: "default" | "user"; modelId: string; userId?: string; model?: string | null }) => {
   const p = new URLSearchParams({ scope: q.scope, modelId: q.modelId });
   if (q.userId) p.set("userId", q.userId);
+  if (q.model) p.set("model", q.model);
   return req<{ deleted: number }>(`/admin/limits?${p.toString()}`, { method: "DELETE" });
 };
 
@@ -115,9 +137,10 @@ export const deleteLimit = (q: { scope: "default" | "user"; modelId: string; use
 export interface UsageRow {
   userId: string;
   email: string | null;
-  modelId: string;
+  modelId: string; // task id
+  model: string | null; // ML model, or null for the task total
   used: number;
-  limit: number;
+  limit: number | null;
 }
 export const getUsage = (period?: string, userId?: string) => {
   const p = new URLSearchParams();
@@ -127,17 +150,25 @@ export const getUsage = (period?: string, userId?: string) => {
   return req<{ period: string; rows: UsageRow[] }>(`/admin/usage${qs ? `?${qs}` : ""}`);
 };
 
-export interface UserUsageRow {
-  modelId: string;
+// Nested per-user usage: each task, with its models under it.
+export interface ModelUsage {
+  model: string;
+  displayName: string;
+  used: number;
+  limit: number | null; // null = no model-specific cap (task cap applies)
+}
+export interface TaskUsage {
+  modelId: string; // task id
   displayName: string;
   used: number;
   limit: number;
+  models: ModelUsage[];
 }
 export const getUserUsage = (userId: string, period?: string) => {
   const p = new URLSearchParams();
   if (period) p.set("period", period);
   const qs = p.toString();
-  return req<{ userId: string; email: string | null; period: string; rows: UserUsageRow[] }>(
+  return req<{ userId: string; email: string | null; period: string; tasks: TaskUsage[] }>(
     `/admin/users/${encodeURIComponent(userId)}/usage${qs ? `?${qs}` : ""}`,
   );
 };
