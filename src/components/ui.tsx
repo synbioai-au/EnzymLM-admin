@@ -4,10 +4,11 @@ import { Loader2 } from "lucide-react";
 import { cn } from "@/lib/cn";
 
 export function Card({ className, children }: { className?: string; children: ReactNode }) {
+  // Flat, hairline container (no shadow) to match the app's /workflows page.
   return (
     <div
       className={cn(
-        "rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800",
+        "rounded-lg border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900",
         className,
       )}
     >
