@@ -2,11 +2,13 @@
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Lock, Mail, ArrowRight, ShieldCheck } from "lucide-react";
+import { GoogleOAuthProvider, GoogleLogin } from "@react-oauth/google";
+import type { CredentialResponse } from "@react-oauth/google";
 import { useAuth } from "@/contexts/AuthContext";
-import { login as apiLogin } from "@/lib/api";
+import { login as apiLogin, googleLogin, type LoginResult } from "@/lib/api";
 import { Button, Input, ErrorNote } from "@/components/ui";
 
-export default function LoginPage() {
+function LoginInner({ showGoogle }: { showGoogle: boolean }) {
   const router = useRouter();
   const { login } = useAuth();
   const [email, setEmail] = useState("");
@@ -14,33 +16,49 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
+  // Shared post-auth path for both password and Google sign-in.
+  const finishAuth = (data: LoginResult, fallbackEmail?: string) => {
+    if (!data.isApproved) {
+      setError(data.message || "Your account is pending approval.");
+      return;
+    }
+    if (data.role !== "admin") {
+      setError("This dashboard is for administrators only.");
+      return;
+    }
+    if (!data.token) {
+      setError("Authentication failed. Please try again.");
+      return;
+    }
+    login(data.token, {
+      id: data._id || data.id || data.userId || "",
+      email: data.email || fallbackEmail || "",
+      name: data.name,
+      role: data.role,
+    });
+    router.replace("/dashboard");
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError("");
     try {
-      const data = await apiLogin(email, password);
-      if (!data.isApproved) {
-        setError(data.message || "Your account is pending approval.");
-        return;
-      }
-      if (data.role !== "admin") {
-        setError("This dashboard is for administrators only.");
-        return;
-      }
-      if (!data.token) {
-        setError("Authentication failed. Please try again.");
-        return;
-      }
-      login(data.token, {
-        id: data._id || data.id || data.userId || "",
-        email: data.email || email,
-        name: data.name,
-        role: data.role,
-      });
-      router.replace("/dashboard");
+      finishAuth(await apiLogin(email, password), email);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleGoogle = async (credential: string) => {
+    setLoading(true);
+    setError("");
+    try {
+      finishAuth(await googleLogin(credential));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Google sign-in failed");
     } finally {
       setLoading(false);
     }
@@ -104,7 +122,47 @@ export default function LoginPage() {
             )}
           </Button>
         </form>
+
+        {showGoogle && (
+          <>
+            <div className="relative my-6">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-gray-200 dark:border-gray-600" />
+              </div>
+              <div className="relative flex justify-center text-xs uppercase tracking-wide">
+                <span className="bg-white px-3 text-gray-400 dark:bg-gray-800 dark:text-gray-500">Or continue with</span>
+              </div>
+            </div>
+            <div className="flex justify-center [&>div]:w-full [&>div>div]:!w-full">
+              <GoogleLogin
+                onSuccess={(c: CredentialResponse) => {
+                  if (c.credential) void handleGoogle(c.credential);
+                }}
+                onError={() => setError("Google sign-in was cancelled or failed.")}
+                theme="outline"
+                size="large"
+                text="signin_with"
+                shape="rectangular"
+                width={384}
+              />
+            </div>
+          </>
+        )}
+
+        <p className="mt-6 text-center text-xs text-gray-400">Administrators only.</p>
       </div>
     </div>
   );
+}
+
+export default function LoginPage() {
+  const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID?.trim();
+  if (clientId) {
+    return (
+      <GoogleOAuthProvider clientId={clientId}>
+        <LoginInner showGoogle />
+      </GoogleOAuthProvider>
+    );
+  }
+  return <LoginInner showGoogle={false} />;
 }
