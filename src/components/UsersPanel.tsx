@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Search, SlidersHorizontal } from "lucide-react";
 import { Card, Spinner, ErrorNote, Badge, Button, Input } from "@/components/ui";
 import { UserLimitsDrawer } from "@/components/UserLimitsDrawer";
-import { getUsers, type AdminUserRecord } from "@/lib/api";
+import { getUsers, updateUserRole, type AdminUserRecord } from "@/lib/api";
 
 export function UsersPanel() {
   const [users, setUsers] = useState<AdminUserRecord[]>([]);
@@ -11,6 +11,24 @@ export function UsersPanel() {
   const [error, setError] = useState("");
   const [q, setQ] = useState("");
   const [selected, setSelected] = useState<AdminUserRecord | null>(null);
+  const [savingId, setSavingId] = useState<string | null>(null);
+  const [actionError, setActionError] = useState("");
+
+  // Move a user between `user` and `internal_user` (internal users are exempt
+  // from usage caps). Admin rows have no toggle — admin changes stay out of the
+  // dashboard, which also means an admin can never toggle their own row.
+  const setRole = async (u: AdminUserRecord, role: string) => {
+    setSavingId(u._id);
+    setActionError("");
+    try {
+      await updateUserRole(u._id, role);
+      setUsers((prev) => prev.map((x) => (x._id === u._id ? { ...x, role } : x)));
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : "Failed to update role");
+    } finally {
+      setSavingId(null);
+    }
+  };
 
   useEffect(() => {
     (async () => {
@@ -40,6 +58,8 @@ export function UsersPanel() {
         <Input className="pl-9" placeholder="Search by email or name…" value={q} onChange={(e) => setQ(e.target.value)} />
       </div>
 
+      {actionError && <ErrorNote message={actionError} />}
+
       <Card className="overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -59,7 +79,28 @@ export function UsersPanel() {
                     {u.name && <div className="text-xs text-gray-400">{u.name}</div>}
                   </td>
                   <td className="px-5 py-3">
-                    {u.role === "admin" ? <Badge tone="navy">admin</Badge> : <Badge>user</Badge>}
+                    <div className="flex items-center gap-2">
+                      {u.role === "admin" ? (
+                        <Badge tone="navy">admin</Badge>
+                      ) : u.role === "internal_user" ? (
+                        <Badge tone="green">internal</Badge>
+                      ) : (
+                        <Badge>user</Badge>
+                      )}
+                      {u.role !== "admin" && (
+                        <Button
+                          variant="outline"
+                          disabled={savingId === u._id}
+                          onClick={() => setRole(u, u.role === "internal_user" ? "user" : "internal_user")}
+                        >
+                          {savingId === u._id
+                            ? "Saving…"
+                            : u.role === "internal_user"
+                              ? "Revert to user"
+                              : "Make internal"}
+                        </Button>
+                      )}
+                    </div>
                   </td>
                   <td className="px-5 py-3">
                     {u.isApproved ? <Badge tone="green">approved</Badge> : <Badge tone="amber">pending</Badge>}

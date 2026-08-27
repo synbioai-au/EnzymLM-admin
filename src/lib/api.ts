@@ -183,3 +183,12 @@ export interface AdminUserRecord {
   createdAt?: string;
 }
 export const getUsers = () => req<AdminUserRecord[]>("/admin/users");
+
+/** Promote/demote a user's role. The UI only moves users between `user` and
+ * `internal_user` (internal users are exempt from usage caps but are NOT
+ * admins). The backend rejects unknown roles and self-role changes. */
+export const updateUserRole = (userId: string, role: string) =>
+  req<{ message: string; user: AdminUserRecord }>(`/admin/users/${encodeURIComponent(userId)}`, {
+    method: "PUT",
+    body: JSON.stringify({ role }),
+  });
