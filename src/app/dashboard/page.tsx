@@ -1,20 +1,26 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ShieldCheck, LogOut, Gauge, Users, SlidersHorizontal } from "lucide-react";
+import { ShieldCheck, LogOut, Gauge, Users, SlidersHorizontal, Inbox, MessageSquare, HardDrive } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button, Spinner } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { ModelsPanel } from "@/components/ModelsPanel";
 import { UsersPanel } from "@/components/UsersPanel";
 import { UsagePanel } from "@/components/UsagePanel";
+import { ContactPanel } from "@/components/ContactPanel";
+import { FeedbackPanel } from "@/components/FeedbackPanel";
+import { StoragePanel } from "@/components/StoragePanel";
 
-type Tab = "models" | "users" | "usage";
+type Tab = "models" | "users" | "usage" | "contact" | "feedback" | "storage";
 
 const TABS: { id: Tab; label: string; icon: typeof Gauge }[] = [
   { id: "models", label: "Model defaults", icon: SlidersHorizontal },
-  { id: "users", label: "Users", icon: Users },
+  { id: "users", label: "Members", icon: Users },
   { id: "usage", label: "Usage this month", icon: Gauge },
+  { id: "contact", label: "Enquiries", icon: Inbox },
+  { id: "feedback", label: "Feedback", icon: MessageSquare },
+  { id: "storage", label: "Storage", icon: HardDrive },
 ];
 
 export default function DashboardPage() {
@@ -55,7 +61,7 @@ export default function DashboardPage() {
               <h1 className="text-base font-semibold leading-tight text-atria-navy-800 dark:text-gray-100">
                 SynBio Admin
               </h1>
-              <p className="text-xs text-gray-500 dark:text-gray-400">Usage limits</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400">Admin console</p>
             </div>
           </div>
           <div className="flex items-center gap-3">
@@ -69,10 +75,9 @@ export default function DashboardPage() {
 
       <main className="mx-auto max-w-6xl px-6 py-8">
         <div className="mb-6 max-w-2xl">
-          <h1 className="text-2xl font-semibold text-slate-900 dark:text-white">Usage limits</h1>
+          <h1 className="text-2xl font-semibold text-slate-900 dark:text-white">Admin console</h1>
           <p className="mt-2 text-pretty text-sm text-slate-600 dark:text-slate-400">
-            Per-user monthly caps on how many times each task — and each model within it — can run. Set defaults for
-            everyone, override per user, and watch usage. Nothing runs uncapped.
+            Usage limits, member access, enquiries, feedback &amp; bug reports, and platform storage — all in one place.
           </p>
         </div>
         <nav className="mb-8 flex gap-1 border-b border-slate-200 dark:border-slate-800">
@@ -99,6 +104,9 @@ export default function DashboardPage() {
         {tab === "models" && <ModelsPanel />}
         {tab === "users" && <UsersPanel />}
         {tab === "usage" && <UsagePanel />}
+        {tab === "contact" && <ContactPanel />}
+        {tab === "feedback" && <FeedbackPanel />}
+        {tab === "storage" && <StoragePanel />}
       </main>
     </div>
   );
