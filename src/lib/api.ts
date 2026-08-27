@@ -181,6 +181,10 @@ export interface AdminUserRecord {
   role: string;
   isApproved: boolean;
   createdAt?: string;
+  // Self-described at signup; absent on Google sign-ins and older accounts.
+  organization?: string;
+  roles?: string[];
+  interests?: string[];
 }
 export const getUsers = () => req<AdminUserRecord[]>("/admin/users");
 
@@ -192,3 +196,110 @@ export const updateUserRole = (userId: string, role: string) =>
     method: "PUT",
     body: JSON.stringify({ role }),
   });
+
+/** Approve or suspend an account (migrated from the main app /admin console). */
+export const updateUserApproval = (userId: string, isApproved: boolean) =>
+  req<{ message: string; user: AdminUserRecord }>(`/admin/users/${encodeURIComponent(userId)}`, {
+    method: "PUT",
+    body: JSON.stringify({ isApproved }),
+  });
+
+/** Delete a (non-admin) user. */
+export const deleteUser = (userId: string) =>
+  req<{ message: string }>(`/admin/users/${encodeURIComponent(userId)}`, { method: "DELETE" });
+
+// ---- platform storage ----
+export interface AdminStorageOverview {
+  warningBytesThreshold: number;
+  platform: { totalBytes: number; fileCount: number; usersWithFiles: number };
+  byKind: Record<string, { bytes: number; count: number }>;
+  byUser: Array<{
+    userId: string;
+    name: string;
+    email: string;
+    role: string;
+    totalBytes: number;
+    fileCount: number;
+    overWarning: boolean;
+  }>;
+}
+export const getStorageOverview = () => req<AdminStorageOverview>("/admin/storage-overview");
+
+// ---- feedback / bug reports ----
+export type FeedbackType = "bug" | "feature" | "general";
+export type FeedbackSeverity = "low" | "medium" | "high" | "critical";
+export type FeedbackStatus = "open" | "in_progress" | "resolved" | "closed";
+export type FeedbackGithubSyncStatus = "synced" | "failed";
+
+export interface FeedbackConsoleLog {
+  level: "log" | "info" | "warn" | "error" | "debug";
+  message: string;
+  ts?: string | null;
+}
+export interface FeedbackDiagnostics {
+  viewport?: string | null;
+  screen?: string | null;
+  devicePixelRatio?: number | null;
+  platform?: string | null;
+  language?: string | null;
+  online?: boolean | null;
+  appVersion?: string | null;
+}
+export interface FeedbackContext {
+  pageUrl?: string | null;
+  userAgent?: string | null;
+  diagnostics?: FeedbackDiagnostics | null;
+  consoleLogs?: FeedbackConsoleLog[] | null;
+  screenshot?: string | null;
+  hasScreenshot?: boolean;
+  hasConsoleLogs?: boolean;
+}
+export interface Feedback {
+  _id: string;
+  type: FeedbackType;
+  title: string;
+  description: string;
+  stepsToReproduce?: string | null;
+  expectedBehavior?: string | null;
+  severity?: FeedbackSeverity | null;
+  motivation?: string | null;
+  status: FeedbackStatus;
+  adminNotes: string | null;
+  userName?: string | null;
+  userEmail?: string | null;
+  context?: FeedbackContext | null;
+  githubIssueNumber?: number | null;
+  githubIssueUrl?: string | null;
+  githubSyncStatus?: FeedbackGithubSyncStatus | null;
+  githubSyncError?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const getFeedback = () => req<Feedback[]>("/feedback");
+export const getFeedbackDetail = (id: string) => req<Feedback>(`/feedback/${encodeURIComponent(id)}`);
+export const updateFeedback = (id: string, body: { status?: FeedbackStatus; adminNotes?: string }) =>
+  req<Feedback>(`/feedback/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(body) });
+export const getFeedbackGithubStatus = () =>
+  req<{ configured: boolean; repo: string | null }>("/feedback/github-status");
+export const retryFeedbackGithub = (id: string) =>
+  req<Feedback>(`/feedback/${encodeURIComponent(id)}/github-sync`, { method: "POST" });
+
+// ---- contact enquiries ("Talk to us" landing form) ----
+export type ContactStatus = "new" | "replied" | "archived";
+export interface ContactEnquiry {
+  _id: string;
+  name: string;
+  email: string;
+  organisation: string | null;
+  message: string;
+  status: ContactStatus;
+  adminNotes: string | null;
+  emailed: boolean;
+  emailError: string | null;
+  createdAt: string;
+  updatedAt?: string;
+}
+export const getContact = () => req<ContactEnquiry[]>("/contact");
+export const updateContact = (id: string, body: { status?: ContactStatus; adminNotes?: string }) =>
+  req<ContactEnquiry>(`/contact/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(body) });
